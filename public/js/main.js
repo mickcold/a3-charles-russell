@@ -105,13 +105,13 @@ const actionGroup = function(row) {
   //Edit button
   edit.type        = 'button'
   edit.textContent = 'Edit'
-  edit.className   = 'row-button edit'
+  edit.className   = 'row-button outline'
   edit.onclick     = function() { startEdit(row) }
 
   //Delete button
   remove.type        = 'button'
   remove.textContent = 'Delete'
-  remove.className   = 'row-button delete'
+  remove.className   = 'row-button outline secondary'
   remove.onclick     = async function() {
     const ok = await send('/delete', { id: row._id })
 
