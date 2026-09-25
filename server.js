@@ -18,6 +18,7 @@ const express = require('express'),
 const client = new MongoClient(process.env.MONGODB_URI)
 
 let collection = null
+let users = null
 
 
 //Milliseconds per day
@@ -75,19 +76,20 @@ const isValidDate = function(value) {
 
 //Middleware that runs for every request:
 
-//Searches the directory, in this case 'public' (server.js:11), for static files requested by the browser without having to make specific routes
-//Handles GET and HEAD requests exclusively
-app.use(express.static(dir))
-
 //Changes the request body, which is in text (main.js:22), into a JSON object
 //Skips if the text isn't valid JSON
 app.use(express.json())
 
-//Declares the parameters of the session; the secret, don't save unless changes are made, and don't create a session or cookie for a user who's not logged in
+//The application is set to trust the immediate reverse proxy
+app.set('trust proxy', 1)
+
+//Declares the parameters of the session; the secret, don't save unless changes are made, don't create a session or cookie for a user who's not logged in, and automatically match the cookie 
+// security of the connection
 app.use(session({
   secret: process.env.SESSION_SECRET,
   resave: false,
-  saveUninitialized: false
+  saveUninitialized: false,
+  cookie: {secure: 'auto'}
 }))
 
 //Middleware for passport:
@@ -104,20 +106,49 @@ passport.use(new GitHubStrategy({
     clientSecret: process.env.GITHUB_CLIENT_SECRET,
     callbackURL: process.env.GITHUB_CALLBACK_URL || 'http://localhost:3000/auth/github/callback'
   },
-  function(accessToken, refreshToken, profile, done) {
-    //Defining what a user is within the app
-    done(null, {id: profile.id, username: profile.username})
+  //Sign in or create new account
+  async function(accessToken, refreshToken, profile, done) {
+    try {
+      //Searches for a github user ID
+      let user = await users.findOne({githubId: profile.id})
+
+      //If the user doesn't exist create a new user
+      if (user === null) {
+        user = {githubId: profile.id, username: profile.username, created: new Date()}
+
+        //Adds the user to MongoDB and sets their user id
+        const result = await users.insertOne(user)
+        user._id = result.insertedId
+
+        //Marks the account as a new user
+        user.newAccount = true
+      }
+
+      done(null, user)
+    }
+    //Error catch
+    catch (err) {
+      done(err)
+    }
   }
 ))
 
 //Decides what gets saved in the session
 passport.serializeUser(function(user, done) {
-  done(null, user)
+  done(null, user._id.toString())
 })
 
-//Returns what serializeUser saved for every request
-passport.deserializeUser(function(user, done) {
-  done(null, user)
+//Looks up a user
+passport.deserializeUser(async function(id, done) {
+  try {
+    //Finds a specific user
+    const user = await users.findOne({_id: new ObjectId(id)})
+
+    done(null, user)
+  }
+  catch (err) {
+    done(err)
+  }
 })
 
 //Redirects users to github login and the site requests the ability to read the user's GH profile
@@ -127,6 +158,11 @@ app.get('/auth/github', passport.authenticate('github', {scope: ['read:user']}))
 app.get('/auth/github/callback',
   passport.authenticate('github', {failureRedirect: '/login.html'}),
   function(request, response) {
+    //If the user is new show welcome message
+    if (request.user.newAccount) {
+      return response.redirect('/?new=1')
+    }
+
     response.redirect('/')
   }
 )
@@ -140,15 +176,35 @@ app.get('/me', function(request, response) {
   sendJSON(response, 200, request.user)
 })
 
-//Code from before swapping to MongoDB
-//Collects the data and sends it to appdata
-// app.get('/data', function(request, response) {
-//   sendJSON(response, 200, appdata)
-// })
+//Verifies that the user is logged in to protect API routes
+const requireLogin = function(request, response, next) {
+  if (request.isAuthenticated()) {
+    return next()
+  }
+
+  sendJSON(response, 401, {error: 'not logged in'})
+}
+
+//Allows the user to logout
+app.post('/logout', function(request, response, next) {
+  request.logout(function(err) {
+    //Catch logout error
+    if (err) {
+      return next(err)
+    }
+
+    response.redirect('/login.html')
+  })
+})
+
+//Retrieves the tasks of a specified user and places them in an array
+const findTasks = function(request) {
+  return collection.find({owner: request.user._id}).toArray()
+}
 
 //Collects all data from MongoDB
-app.get('/data', async function(request, response) {
-  const rows = await collection.find({}).toArray()
+app.get('/data', requireLogin, async function(request, response) {
+  const rows = await findTasks(request)
   sendJSON(response, 200, rows)
   }
 )
@@ -165,11 +221,14 @@ const handleAdd = async function(request, response) {
     return sendJSON(response, 400, {error: 'a task description is required'})
   }
 
+  //Associates the row with the current user
+  row.owner = request.user._id
+
   //Pushes the new row to Mongo
   await collection.insertOne(row)
 
+  const rows = await findTasks(request)
   //Sends the updated data
-  const rows = await collection.find({}).toArray()
   sendJSON(response, 200, rows)
 }
 
@@ -177,15 +236,15 @@ const handleAdd = async function(request, response) {
 const handleDelete = async function(request, response) {
   const incoming = request.body
 
-  //Checks MongoDB for an object with the id given by incoming.id and deletes it if there's a match
-  const result = await collection.deleteOne({_id: new ObjectId(incoming.id)})
+  //Checks MongoDB for an object with the id given by incoming.id and is owned by the user and deletes it if there's a match
+  const result = await collection.deleteOne({_id: new ObjectId(incoming.id), owner: request.user._id})
 
   //Checking the result of findIndex to see if there wasn't a match
   if (result.deletedCount === 0) {
     return sendJSON(response, 404, {error: 'no task with id: ' + incoming.id})
   }
 
-  const rows = await collection.find({}).toArray()
+  const rows = await findTasks(request)
   sendJSON(response, 200, rows)
 }
 
@@ -201,22 +260,38 @@ const handleModify = async function(request, response) {
     return sendJSON(response, 400, {error: 'a task description is required'})
   }
 
-  //Searches MongoDB for a object with the given id and overwrites the row with updated info ($set: row)
-  const result = await collection.updateOne({_id: new ObjectId(incoming.id)}, {$set: row})
+  //Searches MongoDB for a object with the given id and owner, overwrites the row with updated info ($set: row)
+  const result = await collection.updateOne({_id: new ObjectId(incoming.id), owner: request.user._id}, {$set: row})
 
   //Checking the result of findIndex to see if there wasn't a match
   if (result.matchedCount === 0) {
     return sendJSON(response, 404, {error: 'no task with id ' + incoming.id})
   }
 
-  const rows = await collection.find({}).toArray()
+  const rows = await findTasks(request)
   sendJSON(response, 200, rows)
 }
 
 //Routing for Create, Update, Delete parts of CRUD
-app.post('/add', handleAdd)
-app.post('/delete', handleDelete)
-app.post('/modify', handleModify)
+app.post('/add', requireLogin, handleAdd)
+app.post('/delete', requireLogin, handleDelete)
+app.post('/modify', requireLogin, handleModify)
+
+//Pages accessible by users not logged in
+const openPaths = ['/login.html', '/css/main.css']
+
+//Checks if the user is logged in or if its a page anyone can access
+app.use(function(request, response, next) {
+  if (request.isAuthenticated() || openPaths.includes(request.path)) {
+    return next()
+  }
+
+  response.redirect('/login.html')
+})
+
+//Searches the directory, in this case 'public' (server.js:11), for static files requested by the browser without having to make specific routes
+//Handles GET and HEAD requests exclusively
+app.use(express.static(dir))
 
 //Catch for any unknown routes that aren't handled above
 app.use(function(request, response) {
@@ -256,6 +331,9 @@ const start = async function() {
 
     //Gets a reference to a MongoDB collection, in this case 'tasks'
     collection = client.db('a3').collection('tasks')
+
+    //Gets a reference to a MongoDB collection of users
+    users = client.db('a3').collection('users')
 
     console.log('Connected to MongoDB')
   }

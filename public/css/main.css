@@ -120,6 +120,32 @@ button {
   background: #7ba3ff;
 }
 
+#login-text {
+  font-size: 14px;
+  color: #9aa3b8;
+  line-height: 1.5;
+}
+
+#login-button {
+  display: inline-block;
+  font-size: 14px;
+  font-weight: 500;
+  color: #10131a;
+  background: #5b8cff;
+  border-radius: 6px;
+  padding: 9px 16px;
+  text-decoration: none;
+}
+
+#login-button:hover {
+  background: #7ba3ff;
+}
+
+#logout-form {
+  margin-top: 14px;
+  text-align: right;
+}
+
 #status {
   font-size: 13px;
   color: #7f8798;

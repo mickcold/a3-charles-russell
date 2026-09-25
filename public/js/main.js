@@ -250,6 +250,17 @@ window.onload = async function() {
 
   closeForm()
 
+  //Breaks the query string into key/value pairs
+  const params = new URLSearchParams(window.location.search)
+
+  //Using URLSearchParams to allow 'new' to be used
+  if (params.get('new') === '1') {
+    setStatus('New account created. Welcome!', false)
+
+    //Rewrites address bar so the new account message only shows once
+    history.replaceState(null, '', '/')
+  }
+
   //Collects to do list data and renders it
   const response = await fetch('/data')
 

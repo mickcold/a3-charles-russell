@@ -92,20 +92,15 @@ Write a paragraph of at least 125 words *for each of the four principles* (four 
 Sample Readme (delete the above when you're ready to submit, and modify the below so with your links and descriptions)
 ---
 
-## Your Web Application Title
+## A3 To Do List
 
-A link to your project running on render.
 
-Include a very brief summary of your project here. Images are encouraged, along with concise, high-level text. Be sure to include:
 
-- the goal of the application
-- challenges you faced in realizing the application
-- what authentication strategy you chose to use and why (choosing one because it seemed the easiest to implement is perfectly acceptable)
+The goal of my project was to build a readily accesible to do list with github OAuth capabilities. One of the challenges that I faced while working on the assignment was understanding how the web pieces flow together conceptually. By far the hardest part of building the application was implementing the github OAuth and updating the code to enable it. I chose to use the GH OAuth because I wanted the extra ten points and I thought it would be a good thing to understand for the future.
+
 - what CSS framework you used and why
   - include any modifications to the CSS framework you made via custom CSS you authored
 
 ## Technical Achievements
-- **Tech Achievement 1**: I used OAuth authentication via the GitHub strategy
-
-### Design/Evaluation Achievements
-- **Design Achievement 1**: I followed the following tips from the W3C Web Accessibility Initiative...
+- **GitHub OAuth**: I implemented github OAuth into my site using passport.js. The site requests authorization from your github to create an account and ties your account to a set of to do tasks. It works by retrieving information from the .env file and searches MongoDB for a user with your github id. If one isn't found the site creates a new user from the details in your github account.
+- **Express Middleware**: I used express.session() to keep users logged in throughout a session.
