@@ -95,7 +95,7 @@ app.use(session({
 //Initializes the use of passport
 app.use(passport.initialize())
 
-//Makes it so that the login state is preserved
+//Checks for a logged in user and runs deserializeUser if one is
 app.use(passport.session())
 
 //Uses passport with the info in .env
