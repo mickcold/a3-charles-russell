@@ -7,6 +7,9 @@ require('dotenv').config({quiet: true})
 
 const express = require('express'),
       { MongoClient, ObjectId } = require('mongodb'),
+      session = require('express-session'),
+      passport = require('passport'),
+      GitHubStrategy = require('passport-github2').Strategy,
       app = express(),
       dir = 'public',
       port = 3000
@@ -79,6 +82,63 @@ app.use(express.static(dir))
 //Changes the request body, which is in text (main.js:22), into a JSON object
 //Skips if the text isn't valid JSON
 app.use(express.json())
+
+//Declares the parameters of the session; the secret, don't save unless changes are made, and don't create a session or cookie for a user who's not logged in
+app.use(session({
+  secret: process.env.SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false
+}))
+
+//Middleware for passport:
+
+//Initializes the use of passport
+app.use(passport.initialize())
+
+//Makes it so that the login state is preserved
+app.use(passport.session())
+
+//Uses passport with the info in .env
+passport.use(new GitHubStrategy({
+    clientID: process.env.GITHUB_CLIENT_ID,
+    clientSecret: process.env.GITHUB_CLIENT_SECRET,
+    callbackURL: process.env.GITHUB_CALLBACK_URL || 'http://localhost:3000/auth/github/callback'
+  },
+  function(accessToken, refreshToken, profile, done) {
+    //Defining what a user is within the app
+    done(null, {id: profile.id, username: profile.username})
+  }
+))
+
+//Decides what gets saved in the session
+passport.serializeUser(function(user, done) {
+  done(null, user)
+})
+
+//Returns what serializeUser saved for every request
+passport.deserializeUser(function(user, done) {
+  done(null, user)
+})
+
+//Redirects users to github login and the site requests the ability to read the user's GH profile
+app.get('/auth/github', passport.authenticate('github', {scope: ['read:user']}))
+
+//Specifies where the results of the login go to. Success -> '/' and failure -> '/login.html'
+app.get('/auth/github/callback',
+  passport.authenticate('github', {failureRedirect: '/login.html'}),
+  function(request, response) {
+    response.redirect('/')
+  }
+)
+
+//Verifies that the user is logged in and says who the user is
+app.get('/me', function(request, response) {
+  if (!request.isAuthenticated()) {
+    return sendJSON(response, 401, {error: 'not logged in'})
+  }
+
+  sendJSON(response, 200, request.user)
+})
 
 //Code from before swapping to MongoDB
 //Collects the data and sends it to appdata

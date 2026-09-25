@@ -3,14 +3,17 @@
   "version": "1.0.0",
   "description": "A simple to do list program that takes in the task and the due date",
   "author": "Charles Russell",
-  "homepage": "",
+  "homepage": "https://a3-charles-russell.onrender.com/",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
     "dotenv": "^18.0.3",
     "express": "^5.2.1",
-    "mongodb": "^7.6.0"
+    "express-session": "^1.19.0",
+    "mongodb": "^7.6.0",
+    "passport": "^0.7.0",
+    "passport-github2": "^0.1.12"
   },
   "engines": {
     "node": "24.x"
